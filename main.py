@@ -6,7 +6,7 @@ from dataset import SequenceDataset
 from os.path import join
 from models import RULSTM, ModalitiesFusionArc2, SlowFastFusionArc2, SlowFastFusionArc1, ModalitiesFusionArc1
 from utils import topk_accuracy, ValueMeter, topk_accuracy_multiple_timesteps, get_marginal_indexes, marginalize, \
-        softmax,  topk_recall_multiple_timesteps, tta, predictions_to_json, MeanTopKRecallMeter
+        softmax,  topk_recall_multiple_timesteps, tta, predictions_to_json, MeanTopKRecallMeter, seed_everything
 import torch
 from torch.utils.data import DataLoader
 from torch.nn import functional as F
@@ -14,6 +14,8 @@ from tqdm import tqdm
 import numpy as np
 import pandas as pd
 import json
+from cosine_annealing_warmup import CosineAnnealingWarmupRestarts
+
 pd.options.display.float_format = '{:05.2f}'.format
 
 # Parse input args
@@ -335,6 +337,9 @@ def trainval(model, loaders, optimizer, epochs, start_epoch, start_best_perf):
     #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 10)
     #scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=0.9)
     #scheduler2 = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5, factor=0.99)
+    steps_tot = len(loaders['training']) * epochs
+    scheduler = CosineAnnealingWarmupRestarts(optimizer, first_cycle_steps=steps_tot, max_lr=args.lr, min_lr=0.0, 
+                                              warmup_steps=steps_tot // 10)
     stop = 0
     for epoch in range(start_epoch, epochs):
         # define training and validation meters
@@ -375,11 +380,6 @@ def trainval(model, loaders, optimizer, epochs, start_epoch, start_best_perf):
                     #print(x[0][0].device, "just before predict")
                     preds = model(x)
                     
-                    """#for the average and concatenation part only (0.125 - 0.5)
-                    args.S_ant = 4
-                    args.S_enc = 3
-                    args.alpha = 0.5"""
- 
                     if(args.slowfastfusion):
                         #max_step = int(max(args.alphas_fused)/min(args.alphas_fused))
                         #print(preds.shape, max_step)
@@ -407,8 +407,8 @@ def trainval(model, loaders, optimizer, epochs, start_epoch, start_best_perf):
                     idx = int(1.0/args.alpha) if args.task == 'anticipation' else -1
                     # use top-5 for anticipation and top-1 for early recognition
                     k = 5 if args.task == 'anticipation' else 1
-                    acc = topk_accuracy(
-                        preds[:, idx, :].detach().cpu().numpy(), y.detach().cpu().numpy(), (k,))[0]*100
+                    acc = topk_accuracy(preds[:, idx, :].detach().cpu().numpy(), 
+                                        y.detach().cpu().numpy(), (k,))[0] * 100
 
                     # store the values in the meters to keep incremental averages
                     loss_meter[mode].add(loss.item(), bs)
@@ -422,7 +422,7 @@ def trainval(model, loaders, optimizer, epochs, start_epoch, start_best_perf):
                     if mode == 'training':
                         optimizer.zero_grad()
                         loss.backward()
-                        #scheduler.step()
+                        scheduler.step()
                         optimizer.step()
                         #print(scheduler.get_lr())
 
@@ -845,4 +845,5 @@ def main():
             f.write(json.dumps(preds, indent=4, separators=(',',': ')))
 
 if __name__ == '__main__':
+    seed_everything(args.seed)
     main()

@@ -64,6 +64,7 @@ def get_args(stdin):
     parser.add_argument('--json_directory', type=str, default=None, 
                         help='Directory in which to save the generated jsons.')
     parser.add_argument('--ensamble', action='store_true')
+    parser.add_argument('--seed', type=int, default=35771, help='The seed, for reproducibility.')
 
     # Parse args
     args = parser.parse_args()

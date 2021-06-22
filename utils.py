@@ -1,5 +1,8 @@
 """ Set of utilities """
 import numpy as np
+import os
+import random
+import torch
 
 
 class MeanTopKRecallMeter(object):
@@ -175,3 +178,28 @@ def predictions_to_json(verb_scores, noun_scores, action_scores, action_ids, a_t
         predictions['results'][str(i)]['action'] = {
             "%d,%d" % a_to_vn[ii]: float(aa) for ii, aa in zip(ai, a)}
     return predictions
+
+def seed_everything(seed=None, workers=False): 
+    max_seed_value = np.iinfo(np.uint32).max
+    min_seed_value = np.iinfo(np.uint32).min
+
+    try:
+        if seed is None:
+            seed = os.environ.get("PL_GLOBAL_SEED")
+        seed = int(seed)
+    except (TypeError, ValueError):
+        seed = random.randint(min_seed_value, max_seed_value)
+
+    if not (min_seed_value <= seed <= max_seed_value):
+        seed = random.randint(min_seed_value, max_seed_value)
+
+    # using `log.info` instead of `rank_zero_info`,
+    # so users can verify the seed is properly set in distributed training.
+    print(f"Global seed set to {seed}")
+    os.environ["PL_GLOBAL_SEED"] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    os.environ["PL_SEED_WORKERS"] = f"{int(workers)}"
+    return seed
