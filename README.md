@@ -16,3 +16,35 @@ This model has some trained epochs saved (30 epochs with best acc 35.46). to res
 ```
 python3 main.py validate data_path models/ek55 --modality fusion --task anticipation --slowfastfusion --alphas_fused 0.125 0.5 --S_enc_fused 24 6 --S_ant_fused 16 4 --dropout 0.9
 ```
+
+### Model architectures
+
+Let's define the two kind of architectures:
+
+* Architecture #1:
+```console
+                                ↑
+                        ModalitiesFusionArc1
+                                ↑
+            ┌ ------------------------------------ ┐
+            ↑                   ↑                  ↑
+    SlowFastFusionArc1  SlowFastFusionArc1  SlowFastFusionArc1
+            ↑                   ↑                  ↑
+       ┌ ------- ┐         ┌ -------- ┐        ┌ ------- ┐
+       ↑         ↑         ↑         ↑         ↑         ↑   
+    RGB-Slow  RGB-Fast  Obj-Slow  Obj-Fast  Flow-Slow  Flow-Fast
+```
+
+* Architecture #2:
+```console
+                                ↑
+                        SlowFastFusionArch2
+                                ↑
+                 ┌ --------------------------- ┐
+                 ↑                             ↑
+       ModalitiesFusionArc2          ModalitiesFusionArc2
+                 ↑                             ↑
+       ┌ ----------------- ┐         ┌ ----------------- ┐
+       ↑         ↑         ↑         ↑         ↑         ↑
+    RGB-Slow  Obj-Slow  Flow-Slow RGB-Fast  Obj-Fast  Flow-Fast
+```
