@@ -2,30 +2,30 @@
 ### Definitions
 Let's define the two kind of architectures:
 
-* ARCHITECTURE-1:
-                                |
+* ARCHITECTURE #1:
+                                ↑
                         ModalitiesFusionArc1
-                                |
-            ----------------------------------------
-            |                   |                  |
+                                ↑
+            ┌ ------------------------------------ ┐
+            ↑                   ↑                  ↑
     SlowFastFusionArc1  SlowFastFusionArc1  SlowFastFusionArc1
-            |                   |                  |
-       ----------          ----------          ----------
-       |         |         |         |         |         |   
-    RGB-Slow  RGB-Fast   Obj-Slow  OBJ-Fast   FLOW-Slow   Flow-Fast
+            ↑                   ↑                  ↑
+       ┌ ------- ┐         ┌ -------- ┐        ┌ ------- ┐
+       ↑         ↑         ↑         ↑         ↑         ↑   
+    RGB-Slow  RGB-Fast  Obj-Slow  Obj-Fast  Flow-Slow  Flow-Fast
 
 
-* ARCHITECTURE-2:
-                                |
+* ARCHITECTURE #2:
+                                ↑
                         SlowFastFusionArch2
-                                |
-                 ------------------------------
-                 |                             |
+                                ↑
+                 ┌ --------------------------- ┐
+                 ↑                             ↑
        ModalitiesFusionArc2          ModalitiesFusionArc2
-                 |                             |
-       --------------------          --------------------
-       |         |         |         |         |         |
-    M1-Slow   M2-Slow   M3-Slow   M1-Fast   M2-Fast   M3-Fast
+                 ↑                             ↑
+       ┌ ----------------- ┐         ┌ ----------------- ┐
+       ↑         ↑         ↑         ↑         ↑         ↑
+    RGB-Slow  Obj-Slow  Flow-Slow RGB-Fast  Obj-Fast  Flow-Fast
 """
 
 from torch import nn
