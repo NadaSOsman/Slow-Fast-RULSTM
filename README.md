@@ -17,7 +17,7 @@ This model has some trained epochs saved (30 epochs with best acc 35.46). to res
 python3 main.py validate data_path models/ek55 --modality fusion --task anticipation --slowfastfusion --alphas_fused 0.125 0.5 --S_enc_fused 24 6 --S_ant_fused 16 4 --dropout 0.9
 ```
 
-# SlowFast RULSTM Model
+# Model
 ### Model architectures
 
 Let's define the two kind of architectures:
