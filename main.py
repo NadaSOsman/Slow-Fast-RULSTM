@@ -1,5 +1,7 @@
 """Main training/test program for RULSTM"""
-from argparse import ArgumentParser
+import sys
+
+from config import get_args
 from dataset import SequenceDataset
 from os.path import join
 from models import RULSTM, RULSTMFusion, RULSTMSlowFastFusion
@@ -14,7 +16,8 @@ import pandas as pd
 import json
 pd.options.display.float_format = '{:05.2f}'.format
 
-
+# Parse input args
+args = get_args(sys.argv[1:])
 if args.mode == 'test' or args.mode=='validate_json':
     assert args.json_directory is not None
 
@@ -42,7 +45,6 @@ if args.slowfastfusion:
     args.S_enc = max(args.S_enc_fused)
     args.S_ant = max(args.S_ant_fused)
 
-
 if args.visdom:
     # if visdom is required
     # load visdom loggers from torchent
@@ -56,6 +58,8 @@ if args.visdom:
     visdom_saver = VisdomSaver(envs=[exp_name])
 
 actions_weights = np.loadtxt('actions_weights')
+print(args)
+exit()
 
 def get_loader(mode, override_modality = None, split_point=1.0):
     if override_modality:
