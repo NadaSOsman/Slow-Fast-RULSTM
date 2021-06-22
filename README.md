@@ -17,18 +17,12 @@ This model has some trained epochs saved (30 epochs with best acc 35.46). to res
 python3 main.py validate data_path models/ek55 --modality fusion --task anticipation --slowfastfusion --alphas_fused 0.125 0.5 --S_enc_fused 24 6 --S_ant_fused 16 4 --dropout 0.9
 ```
 
-# Packages
-
-```console
-pip install 'git+https://github.com/katsura-jp/pytorch-cosine-annealing-with-warmup'
-```
-
 # Model
 ### Model architectures
 
 Let's define the two kind of architectures:
 
-* Architecture #1:
+#### Architecture #1:
 ```python
                                    ↑
                            ModalitiesFusionArc1
@@ -38,11 +32,21 @@ Let's define the two kind of architectures:
     SlowFastFusionArc1     SlowFastFusionArc1     SlowFastFusionArc1
             ↑                      ↑                     ↑
        ┌ ------- ┐            ┌ -------- ┐           ┌ ------- ┐
-       ↑         ↑            ↑          ↑           ↑         ↑   
+       ↑         ↑            ↑         ↑            ↑         ↑   
     RGB-Slow  RGB-Fast     Obj-Slow  Obj-Fast     Flow-Slow  Flow-Fast
 ```
 
-* Architecture #2:
+Stages
+
+* For each modality:
+  * train the `Slow` branch with `sequence completion`,
+  * finetune the `Slow` branch,
+  * train the `Fast` branch with `sequence completion`,
+  * finetune the `Fast` branch,
+  * train the `SlowFastFusionArc1` with the `Slow` and `Fast` branches,
+* train the `ModalitiesFusionArc1` passing all the `SlowFastFusionArc1` modalities.
+
+#### Architecture #2:
 ```python
                                    ↑
                            SlowFastFusionArch2
@@ -55,3 +59,16 @@ Let's define the two kind of architectures:
        ↑         ↑         ↑              ↑         ↑         ↑
     RGB-Slow  Obj-Slow  Flow-Slow      RGB-Fast  Obj-Fast  Flow-Fast
 ```
+
+Stages
+
+* For each frame rate:
+  * train the `RGB-Slow` branch with `sequence completion`
+  * train the `Obj-Slow` branch with `sequence completion`,
+  * train the `Flow-Slow` branch with `sequence completion`,
+  * finetune the `RGB-Slow`,
+  * finetune the `Obj-Slow`,
+  * finetune the `Flow-Slow`,
+  * finetune the `Slow` branch,
+* train the `ModalitiesFusionArc2` with for the `Slow` and `Fast` branches,
+* train the `SlowFastFusionArch2` with the `Slow` and `Fast` branches.
