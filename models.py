@@ -13,7 +13,7 @@ Let's define the two kind of architectures:
     SlowFastFusionArc1     SlowFastFusionArc1     SlowFastFusionArc1
             ↑                      ↑                     ↑
        ┌ ------- ┐            ┌ -------- ┐           ┌ ------- ┐
-       ↑         ↑            ↑         ↑            ↑         ↑   
+       ↑         ↑            ↑          ↑           ↑         ↑   
     RGB-Slow  RGB-Fast     Obj-Slow  Obj-Fast     Flow-Slow  Flow-Fast
 
 
