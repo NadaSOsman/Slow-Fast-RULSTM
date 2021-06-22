@@ -4,12 +4,10 @@ import sys
 from config import get_args
 from dataset import SequenceDataset
 from os.path import join
-from models import RULSTM, RULSTMFusion, RULSTMSlowFastFusion
+from models import RULSTM, ModalitiesFusionArc2, SlowFastFusionArc2, SlowFastFusionArc1, ModalitiesFusionArc1
 import torch
 from torch.utils.data import DataLoader
 from torch.nn import functional as F
-from utils import topk_accuracy, ValueMeter, topk_accuracy_multiple_timesteps, get_marginal_indexes, \
-        marginalize, softmax,  topk_recall_multiple_timesteps, tta, predictions_to_json, MeanTopKRecallMeter
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
@@ -18,6 +16,83 @@ pd.options.display.float_format = '{:05.2f}'.format
 
 # Parse input args
 args = get_args(sys.argv[1:])
+=======
+parser = ArgumentParser(description="Training program for RULSTM")
+parser.add_argument('mode', type=str, choices=['train', 'validate', 'test', 'test', 'validate_json'], default='train',
+                    help="Whether to perform training, validation or test.\
+                            If test is selected, --json_directory must be used to provide\
+                            a directory in which to save the generated jsons.")
+parser.add_argument('path_to_data', type=str,
+                    help="Path to the data folder, \
+                            containing all LMDB datasets")
+parser.add_argument('path_to_models', type=str,
+                    help="Path to the directory where to save all models")
+parser.add_argument('--alpha', type=float, default=0.25,
+                    help="Distance between time-steps in seconds")
+parser.add_argument('--alphas_fused', type=float, nargs='+', default=[0.125,0.5])
+parser.add_argument('--S_enc', type=int, default=6,
+                    help="Number of encoding steps. \
+                            If early recognition is performed, \
+                            this value is discarded.")
+parser.add_argument('--S_enc_fused', type=int, nargs='+', default=[12,3])
+parser.add_argument('--S_ant', type=int, default=8,
+                    help="Number of anticipation steps. \
+                            If early recognition is performed, \
+                            this is the number of frames sampled for each action.")
+parser.add_argument('--S_ant_fused', type=int, nargs='+', default=[16,4])
+parser.add_argument('--task', type=str, default='anticipation', choices=[
+                    'anticipation', 'early_recognition'], help='Task to tackle: \
+                            anticipation or early recognition')
+parser.add_argument('--img_tmpl', type=str,
+                    default='frame_{:010d}.jpg', help='Template to use to load the representation of a given frame')
+parser.add_argument('--modality', type=str, default='rgb',
+                    choices=['rgb', 'flow', 'obj', 'fusion'], help = "Modality. Rgb/flow/obj represent single branches, whereas fusion indicates the whole model with modality attention.")
+parser.add_argument('--slowfastfusion', action='store_true')
+parser.add_argument('--sequence_completion', action='store_true',
+                    help='A flag to selec sequence completion pretraining rather than standard training.\
+                            If not selected, a valid checkpoint for sequence completion pretraining\
+                            should be available unless --ignore_checkpoints is specified')
+parser.add_argument('--mt5r', action='store_true')
+
+parser.add_argument('--num_class', type=int, default=2513,
+                    help='Number of classes')
+parser.add_argument('--hidden', type=int, default=1024,
+                    help='Number of hidden units')
+parser.add_argument('--feat_in', type=int, default=1024,
+                    help='Input size. If fusion, it is discarded (see --feats_in)')
+parser.add_argument('--feats_in', type=int, nargs='+', default=[1024, 1024, 352],
+                    help='Input sizes when the fusion modality is selected.')
+parser.add_argument('--dropout', type=float, default=0.8, help="Dropout rate")
+
+parser.add_argument('--batch_size', type=int, default=128, help="Batch Size")
+parser.add_argument('--num_workers', type=int, default=4,
+                    help="Number of parallel thread to fetch the data")
+parser.add_argument('--lr', type=float, default=0.01, help="Learning rate")
+parser.add_argument('--momentum', type=float, default=0.9, help="Momentum")
+
+parser.add_argument('--display_every', type=int, default=10,
+                    help="Display every n iterations")
+parser.add_argument('--epochs', type=int, default=100, help="Training epochs")
+parser.add_argument('--visdom', action='store_true',
+                    help="Whether to log using visdom")
+
+parser.add_argument('--ignore_checkpoints', action='store_true',
+                    help='If specified, avoid loading existing models (no pre-training)')
+parser.add_argument('--resume', action='store_true',
+                    help='Whether to resume suspended training')
+
+parser.add_argument('--ek100', action='store_true',
+                    help="Whether to use EPIC-KITCHENS-100")
+
+parser.add_argument('--json_directory', type=str, default = None, help = 'Directory in which to save the generated jsons.')
+
+parser.add_argument('--ensamble', action='store_true')
+
+parser.add_argument('--arc1', action='store_true')
+
+args = parser.parse_args()
+
+>>>>>>> main
 if args.mode == 'test' or args.mode=='validate_json':
     assert args.json_directory is not None
 
@@ -51,8 +126,10 @@ def get_loader(mode, override_modality = None, split_point=1.0):
                 path_to_lmdb = [join(args.path_to_data, args.modality) for m in range(len(args.alphas_fused))]
             else:
                 #path_to_lmdb = [join(args.path_to_data, m) for m in ['rgb', 'flow', 'obj', 'rgb', 'flow', 'obj']]
-                #path_to_lmdb = [[join(args.path_to_data, n) for m in range(len(args.alphas_fused))] for n in ['rgb', 'flow', 'obj']]
-                path_to_lmdb = [[join(args.path_to_data, m) for m in ['rgb', 'flow', 'obj']] for n in range(len(args.alphas_fused))]
+                if args.arc1:
+                    path_to_lmdb = [[join(args.path_to_data, n) for m in range(len(args.alphas_fused))] for n in ['rgb', 'flow', 'obj']]
+                else:
+                    path_to_lmdb = [[join(args.path_to_data, m) for m in ['rgb', 'flow', 'obj']] for n in range(len(args.alphas_fused))]
         else:
             path_to_lmdb = join(args.path_to_data, args.modality) if args.modality != 'fusion' else [join(args.path_to_data, m) for m in ['rgb', 'flow', 'obj']]
 
@@ -91,7 +168,7 @@ def get_model():
                         single_exp_name += '_sequence_completion'
                     checkpoints.append(torch.load(join(args.path_to_models+f"_{args.alphas_fused[i]}", single_exp_name+'_best.pth.tar'))['state_dict'])
                     models[i].load_state_dict(checkpoints[i])
-            model = RULSTMSlowFastFusion(models, args.hidden, args.dropout, args.alphas_fused) 
+            model = SlowFastFusionArc1(models, args.hidden, args.dropout, args.alphas_fused) 
         else:
             model = RULSTM(args.num_class, args.feat_in, args.hidden,
                            args.dropout, sequence_completion=args.sequence_completion)
@@ -142,42 +219,42 @@ def get_model():
                     #models[i*3+1].load_state_dict(checkpoints[i*3+1])
                     #models[i*3+2].load_state_dict(checkpoints[i*3+2])"""
 
-            """rgb_model = RULSTMSlowFastFusion(models_rgb, args.hidden, args.dropout, args.alphas_fused, True)
-            flow_model = RULSTMSlowFastFusion(models_flow, args.hidden, args.dropout, args.alphas_fused, True)
-            obj_model = RULSTMSlowFastFusion(models_obj, args.hidden, args.dropout, args.alphas_fused, True)
+            if args.arc1:
+                rgb_model = SlowFastFusionArc1(models_rgb, args.hidden, args.dropout, args.alphas_fused, True)
+                flow_model = SlowFastFusionArc1(models_flow, args.hidden, args.dropout, args.alphas_fused, True)
+                obj_model = SlowFastFusionArc1(models_obj, args.hidden, args.dropout, args.alphas_fused, True)
 
-            if args.mode == 'train' and not args.ignore_checkpoints:
-                checkpoint_rgb = torch.load(join(args.path_to_models,\
-                        exp_name.replace('fusion','rgb') +'_best.pth.tar'))['state_dict']
-                checkpoint_flow = torch.load(join(args.path_to_models,\
-                        exp_name.replace('fusion','flow') +'_best.pth.tar'))['state_dict']
-                checkpoint_obj = torch.load(join(args.path_to_models,\
-                        exp_name.replace('fusion','obj') +'_best.pth.tar'))['state_dict']
-          
-                rgb_model.load_state_dict(checkpoint_rgb)
-                flow_model.load_state_dict(checkpoint_flow)
-                obj_model.load_state_dict(checkpoint_obj)
+                if args.mode == 'train' and not args.ignore_checkpoints:
+                     checkpoint_rgb = torch.load(join(args.path_to_models,\
+                            exp_name.replace('fusion','rgb') +'_best.pth.tar'))['state_dict']
+                     checkpoint_flow = torch.load(join(args.path_to_models,\
+                            exp_name.replace('fusion','flow') +'_best.pth.tar'))['state_dict']
+                     checkpoint_obj = torch.load(join(args.path_to_models,\
+                            exp_name.replace('fusion','obj') +'_best.pth.tar'))['state_dict']
+			  
+                     rgb_model.load_state_dict(checkpoint_rgb)
+                     flow_model.load_state_dict(checkpoint_flow)
+                     obj_model.load_state_dict(checkpoint_obj)
 
-            model = RULSTMFusion([rgb_model, flow_model, obj_model], args.hidden, args.dropout, len(args.alphas_fused))
-            #model = RULSTMFusion(models, args.hidden, args.dropout, len(args.alphas_fused))"""
+                model = ModalitiesFusionArc1([rgb_model, flow_model, obj_model], args.hidden, args.dropout, len(args.alphas_fused))
+                #model = ModalitiesFusionArc2(models, args.hidden, args.dropout, len(args.alphas_fused))
+            else:
+                fast_model = RULSTMFusion([models_rgb[0], models_flow[0], models_obj[0]], args.hidden, args.dropout, return_context=True)
+                slow_model = RULSTMFusion([models_rgb[1], models_flow[1], models_obj[1]], args.hidden, args.dropout, return_context=True)
 
-            fast_model = RULSTMFusion([models_rgb[0], models_flow[0], models_obj[0]], args.hidden, args.dropout, return_context=True)
-            slow_model = RULSTMFusion([models_rgb[1], models_flow[1], models_obj[1]], args.hidden, args.dropout, return_context=True)
+                if (args.mode == 'train' and not args.ignore_checkpoints):
+                     checkpoint_fast = torch.load('./models/ek55_0.125/RULSTM-anticipation_0.125_12_16_fusion_best.pth.tar')['state_dict']
+                     checkpoint_slow = torch.load('./models/ek55_0.5/RULSTM-anticipation_0.5_6_4_fusion_best.pth.tar')['state_dict']
+                     fast_model.load_state_dict(checkpoint_fast)
+                     slow_model.load_state_dict(checkpoint_slow)
 
-            if (args.mode == 'train' and not args.ignore_checkpoints):
-                checkpoint_fast = torch.load('./models/ek55_0.125/RULSTM-anticipation_0.125_12_16_fusion_best.pth.tar')['state_dict']
-                checkpoint_slow = torch.load('./models/ek55_0.5/RULSTM-anticipation_0.5_6_4_fusion_best.pth.tar')['state_dict']
-                fast_model.load_state_dict(checkpoint_fast)
-                slow_model.load_state_dict(checkpoint_slow)
-
-            model = RULSTMSlowFastFusion([fast_model, slow_model], args.hidden, args.dropout, args.alphas_fused)
+                model = RULSTMSlowFastFusion([fast_model, slow_model], args.hidden, args.dropout, args.alphas_fused)
 
         else:
             rgb_model = RULSTM(args.num_class, args.feats_in[0], args.hidden, args.dropout, return_context = args.task=='anticipation')
             flow_model = RULSTM(args.num_class, args.feats_in[1], args.hidden, args.dropout, return_context = args.task=='anticipation')
             obj_model = RULSTM(args.num_class, args.feats_in[2], args.hidden, args.dropout, return_context = args.task=='anticipation')
         
-
             if args.task=='early_recognition' or (args.mode == 'train' and not args.ignore_checkpoints):
                 checkpoint_rgb = torch.load(join(args.path_to_models,\
                         exp_name.replace('fusion','rgb') +'_best.pth.tar'))['state_dict']
@@ -194,7 +271,6 @@ def get_model():
                 return [rgb_model, flow_model, obj_model]
 
             model = RULSTMFusion([rgb_model, flow_model, obj_model], args.hidden, args.dropout)
-
     return model
 
 
@@ -333,7 +409,7 @@ def trainval(model, loaders, optimizer, epochs, start_epoch, start_best_perf):
     best_perf = start_best_perf  # to keep track of the best performing epoch
     #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 10)
     #scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=0.9)
-    scheduler2 = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5, factor=0.99)
+    #scheduler2 = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5, factor=0.99)
     stop = 0
     for epoch in range(start_epoch, epochs):
         # define training and validation meters
@@ -441,8 +517,8 @@ def trainval(model, loaders, optimizer, epochs, start_epoch, start_best_perf):
 
                 #if mode == 'validation' and epoch%10 == 0:
                 #    scheduler.step() #(accuracy_meter[mode])
-                if mode == 'validation':
-                    scheduler2.step(accuracy_meter[mode].value())
+                #if mode == 'validation':
+                #    scheduler2.step(accuracy_meter[mode].value())
                     #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 100)
                 # log at the end of each epoch
                 log(mode, epoch+1, loss_meter[mode], accuracy_meter[mode],
