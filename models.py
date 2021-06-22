@@ -1,31 +1,36 @@
 """
-### Definitions
 Let's define the two kind of architectures:
 
-* ARCHITECTURE #1:
-                                ↑
-                        ModalitiesFusionArc1
-                                ↑
-            ┌ ------------------------------------ ┐
-            ↑                   ↑                  ↑
-    SlowFastFusionArc1  SlowFastFusionArc1  SlowFastFusionArc1
-            ↑                   ↑                  ↑
-       ┌ ------- ┐         ┌ -------- ┐        ┌ ------- ┐
-       ↑         ↑         ↑         ↑         ↑         ↑   
-    RGB-Slow  RGB-Fast  Obj-Slow  Obj-Fast  Flow-Slow  Flow-Fast
+##################################################
+# ARCHITECTURE 1
+##################################################
+
+                                   ↑
+                           ModalitiesFusionArc1
+                                   ↑
+            ┌ ------------------------------------------ ┐
+            ↑                      ↑                     ↑
+    SlowFastFusionArc1     SlowFastFusionArc1     SlowFastFusionArc1
+            ↑                      ↑                     ↑
+       ┌ ------- ┐            ┌ -------- ┐           ┌ ------- ┐
+       ↑         ↑            ↑         ↑            ↑         ↑   
+    RGB-Slow  RGB-Fast     Obj-Slow  Obj-Fast     Flow-Slow  Flow-Fast
 
 
-* ARCHITECTURE #2:
-                                ↑
-                        SlowFastFusionArch2
-                                ↑
-                 ┌ --------------------------- ┐
-                 ↑                             ↑
-       ModalitiesFusionArc2          ModalitiesFusionArc2
-                 ↑                             ↑
-       ┌ ----------------- ┐         ┌ ----------------- ┐
-       ↑         ↑         ↑         ↑         ↑         ↑
-    RGB-Slow  Obj-Slow  Flow-Slow RGB-Fast  Obj-Fast  Flow-Fast
+##################################################
+# ARCHITECTURE 2
+##################################################
+
+                                   ↑
+                           SlowFastFusionArch2
+                                   ↑
+                 ┌ -------------------------------- ┐
+                 ↑                                  ↑
+       ModalitiesFusionArc2               ModalitiesFusionArc2
+                 ↑                                  ↑
+       ┌ ----------------- ┐              ┌ ----------------- ┐
+       ↑         ↑         ↑              ↑         ↑         ↑
+    RGB-Slow  Obj-Slow  Flow-Slow      RGB-Fast  Obj-Fast  Flow-Fast
 """
 
 from torch import nn
