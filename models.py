@@ -1,3 +1,33 @@
+"""
+### Definitions
+Let's define the two kind of architectures:
+
+* ARCHITECTURE-1:
+                                |
+                        ModalitiesFusionArc1
+                                |
+            ----------------------------------------
+            |                   |                  |
+    SlowFastFusionArc1  SlowFastFusionArc1  SlowFastFusionArc1
+            |                   |                  |
+       ----------          ----------          ----------
+       |         |         |         |         |         |   
+    RGB-Slow  RGB-Fast   Obj-Slow  OBJ-Fast   FLOW-Slow   Flow-Fast
+
+
+* ARCHITECTURE-2:
+                                |
+                        SlowFastFusionArch2
+                                |
+                 ------------------------------
+                 |                             |
+       ModalitiesFusionArc2          ModalitiesFusionArc2
+                 |                             |
+       --------------------          --------------------
+       |         |         |         |         |         |
+    M1-Slow   M2-Slow   M3-Slow   M1-Fast   M2-Fast   M3-Fast
+"""
+
 from torch import nn
 import torch
 from torch.nn.init import normal, constant
@@ -189,7 +219,7 @@ class RULSTM(nn.Module):
         else:
             return y
 
-class RULSTMFusion(nn.Module):
+class ModalitiesFusionArc2(nn.Module):
     def __init__(self, branches, hidden, dropout=0.8, slow_fast_fusion_size=1, return_context=False):
         """
             branches: list of pre-trained branches. Each branch should have the "return_context" property to True
@@ -280,7 +310,7 @@ class RULSTMFusion(nn.Module):
             return sc
             #return p
 
-class AllBranchesRULSTMFusion(nn.Module):
+class ModalitiesFusionArc1(nn.Module):
     def __init__(self, branches, hidden, dropout=0.8, slow_fast_fusion_size=1, return_context=False):
         """
             branches: list of pre-trained branches. Each branch should have the "return_context" property to True
@@ -372,7 +402,7 @@ class AllBranchesRULSTMFusion(nn.Module):
             #return p
 
 
-class RULSTMSlowFastFusion(nn.Module):
+class SlowFastFusionArc2(nn.Module):
     def __init__(self, branches, hidden, dropout=0.8, alphas=[0.125, 0.5], return_context=False):
         """
             branches: list of pre-trained branches. Each branch should have the "return_context" property to True
@@ -526,7 +556,7 @@ class RULSTMSlowFastFusion(nn.Module):
 
 
 
-class SingleBranchRULSTMSlowFastFusion(nn.Module):
+class SlowFastFusionArc1(nn.Module):
     def __init__(self, branches, hidden, dropout=0.8, alphas=[0.125, 0.5], return_context=False):
         """
             branches: list of pre-trained branches. Each branch should have the "return_context" property to True

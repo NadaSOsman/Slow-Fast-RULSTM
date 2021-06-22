@@ -2,11 +2,12 @@
 from argparse import ArgumentParser
 from dataset import SequenceDataset
 from os.path import join
-from models import RULSTM, RULSTMFusion, RULSTMSlowFastFusion, SingleBranchRULSTMSlowFastFusion, AllBranchesRULSTMFusion
+from models import RULSTM, ModalitiesFusionArc2, SlowFastFusionArc2, SlowFastFusionArc1, ModalitiesFusionArc1
 import torch
 from torch.utils.data import DataLoader
 from torch.nn import functional as F
-from utils import topk_accuracy, ValueMeter, topk_accuracy_multiple_timesteps, get_marginal_indexes, marginalize, softmax,  topk_recall_multiple_timesteps, tta, predictions_to_json, MeanTopKRecallMeter
+from utils import topk_accuracy, ValueMeter, topk_accuracy_multiple_timesteps, get_marginal_indexes, marginalize, \
+        softmax,  topk_recall_multiple_timesteps, tta, predictions_to_json, MeanTopKRecallMeter
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
@@ -181,7 +182,7 @@ def get_model():
                         single_exp_name += '_sequence_completion'
                     checkpoints.append(torch.load(join(args.path_to_models+f"_{args.alphas_fused[i]}", single_exp_name+'_best.pth.tar'))['state_dict'])
                     models[i].load_state_dict(checkpoints[i])
-            model = RULSTMSlowFastFusion(models, args.hidden, args.dropout, args.alphas_fused) 
+            model = SlowFastFusionArc1(models, args.hidden, args.dropout, args.alphas_fused) 
         else:
             model = RULSTM(args.num_class, args.feat_in, args.hidden,
                            args.dropout, sequence_completion=args.sequence_completion)
@@ -233,9 +234,9 @@ def get_model():
                     #models[i*3+2].load_state_dict(checkpoints[i*3+2])"""
 
             if args.arc1:
-                rgb_model = SingleBranchRULSTMSlowFastFusion(models_rgb, args.hidden, args.dropout, args.alphas_fused, True)
-                flow_model = SingleBranchRULSTMSlowFastFusion(models_flow, args.hidden, args.dropout, args.alphas_fused, True)
-                obj_model = SingleBranchRULSTMSlowFastFusion(models_obj, args.hidden, args.dropout, args.alphas_fused, True)
+                rgb_model = SlowFastFusionArc1(models_rgb, args.hidden, args.dropout, args.alphas_fused, True)
+                flow_model = SlowFastFusionArc1(models_flow, args.hidden, args.dropout, args.alphas_fused, True)
+                obj_model = SlowFastFusionArc1(models_obj, args.hidden, args.dropout, args.alphas_fused, True)
 
                 if args.mode == 'train' and not args.ignore_checkpoints:
                      checkpoint_rgb = torch.load(join(args.path_to_models,\
@@ -249,8 +250,8 @@ def get_model():
                      flow_model.load_state_dict(checkpoint_flow)
                      obj_model.load_state_dict(checkpoint_obj)
 
-                model = AllBranchesRULSTMFusion([rgb_model, flow_model, obj_model], args.hidden, args.dropout, len(args.alphas_fused))
-                #model = RULSTMFusion(models, args.hidden, args.dropout, len(args.alphas_fused))
+                model = ModalitiesFusionArc1([rgb_model, flow_model, obj_model], args.hidden, args.dropout, len(args.alphas_fused))
+                #model = ModalitiesFusionArc2(models, args.hidden, args.dropout, len(args.alphas_fused))
             else:
                 fast_model = RULSTMFusion([models_rgb[0], models_flow[0], models_obj[0]], args.hidden, args.dropout, return_context=True)
                 slow_model = RULSTMFusion([models_rgb[1], models_flow[1], models_obj[1]], args.hidden, args.dropout, return_context=True)
@@ -268,7 +269,6 @@ def get_model():
             flow_model = RULSTM(args.num_class, args.feats_in[1], args.hidden, args.dropout, return_context = args.task=='anticipation')
             obj_model = RULSTM(args.num_class, args.feats_in[2], args.hidden, args.dropout, return_context = args.task=='anticipation')
         
-
             if args.task=='early_recognition' or (args.mode == 'train' and not args.ignore_checkpoints):
                 checkpoint_rgb = torch.load(join(args.path_to_models,\
                         exp_name.replace('fusion','rgb') +'_best.pth.tar'))['state_dict']
@@ -285,7 +285,6 @@ def get_model():
                 return [rgb_model, flow_model, obj_model]
 
             model = RULSTMFusion([rgb_model, flow_model, obj_model], args.hidden, args.dropout)
-
     return model
 
 
