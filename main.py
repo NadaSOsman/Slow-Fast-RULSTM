@@ -40,26 +40,7 @@ if args.mt5r:
 if args.sequence_completion:
     exp_name += '_sequence_completion'
 
-if args.slowfastfusion:
-    args.alpha = min(args.alphas_fused)
-    args.S_enc = max(args.S_enc_fused)
-    args.S_ant = max(args.S_ant_fused)
-
-if args.visdom:
-    # if visdom is required
-    # load visdom loggers from torchent
-    from torchnet.logger import VisdomPlotLogger, VisdomSaver
-    # define loss and accuracy logger
-    visdom_loss_logger = VisdomPlotLogger('line', env=exp_name, opts={
-                                          'title': 'Loss', 'legend': ['training', 'validation']})
-    visdom_accuracy_logger = VisdomPlotLogger('line', env=exp_name, opts={
-                                              'title': 'Top5 Acc@1s', 'legend': ['training', 'validation']})
-    # define a visdom saver to save the plots
-    visdom_saver = VisdomSaver(envs=[exp_name])
-
 actions_weights = np.loadtxt('actions_weights')
-print(args)
-exit()
 
 def get_loader(mode, override_modality = None, split_point=1.0):
     if override_modality:
@@ -238,11 +219,6 @@ def save_model(model, epoch, perf, best_perf, is_best=False):
         torch.save({'state_dict': model.state_dict(), 'epoch': epoch, 'perf': perf, 'best_perf': best_perf}, join(
             args.path_to_models, exp_name + '_best.pth.tar'))
 
-    if args.visdom:
-        # save visdom logs for persitency
-        visdom_saver.save()
-
-
 def log(mode, epoch, loss_meter, accuracy_meter, best_perf=None, green=False):
     if green:
         print('\033[92m', end="")
@@ -256,10 +232,6 @@ def log(mode, epoch, loss_meter, accuracy_meter, best_perf=None, green=False):
         print(f"[best: {best_perf:0.2f}]%", end="")
 
     print('\033[0m')
-
-    if args.visdom:
-        visdom_loss_logger.log(epoch, loss_meter.value(), name=mode)
-        visdom_accuracy_logger.log(epoch, accuracy_meter.value(), name=mode)
 
 def get_scores_early_recognition_fusion(models, loaders):
     verb_scores = 0

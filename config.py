@@ -1,11 +1,12 @@
 from argparse import ArgumentParser
+import json
 
 def get_args(stdin):
     parser = ArgumentParser(stdin, description="Training program for RULSTM")
-    parser.add_argument('mode', type=str, choices=['train', 'validate', 'test', 'test', 'validate_json'], default='train',
-                        help="Whether to perform training, validation or test.\
-                                If test is selected, --json_directory must be used to provide\
-                                a directory in which to save the generated jsons.")
+    parser.add_argument('mode', type=str, choices=['train', 'validate', 'test', 'test', 'validate_json'], 
+                        default='train', help="Whether to perform training, validation or test.\
+                                                If test is selected, --json_directory must be used to provide\
+                                                a directory in which to save the generated jsons.")
     parser.add_argument('path_to_data', type=str,
                         help="Path to the data folder, \
                                 containing all LMDB datasets")
@@ -24,14 +25,13 @@ def get_args(stdin):
                                 If early recognition is performed, \
                                 this is the number of frames sampled for each action.")
     parser.add_argument('--S_ant_fused', type=int, nargs='+', default=[16,4])
-    parser.add_argument('--task', type=str, default='anticipation', choices=[
-                        'anticipation', 'early_recognition'], help='Task to tackle: \
-                                anticipation or early recognition')
-    parser.add_argument('--img_tmpl', type=str,
-                        default='frame_{:010d}.jpg', help='Template to use to load the representation of a given frame')
+    parser.add_argument('--task', type=str, default='anticipation', choices=['anticipation', 'early_recognition'], 
+                        help='Task to tackle: anticipation or early recognition')
+    parser.add_argument('--img_tmpl', type=str, default='frame_{:010d}.jpg', 
+                        help='Template to use to load the representation of a given frame')
     parser.add_argument('--modality', type=str, default='rgb', choices=['rgb', 'flow', 'obj', 'fusion'], 
-                        help="Modality. Rgb/flow/obj represent single branches, whereas fusion indicates the whole model \
-                                with modality attention.")
+                        help="Modality. Rgb/flow/obj represent single branches, whereas fusion indicates the whole \
+                                model with modality attention.")
     parser.add_argument('--slowfastfusion', action='store_true')
     parser.add_argument('--sequence_completion', action='store_true',
                         help='A flag to selec sequence completion pretraining rather than standard training.\
@@ -55,8 +55,6 @@ def get_args(stdin):
     parser.add_argument('--display_every', type=int, default=10,
                         help="Display every n iterations")
     parser.add_argument('--epochs', type=int, default=100, help="Training epochs")
-    parser.add_argument('--visdom', action='store_true',
-                        help="Whether to log using visdom")
     parser.add_argument('--ignore_checkpoints', action='store_true',
                         help='If specified, avoid loading existing models (no pre-training)')
     parser.add_argument('--resume', action='store_true',
@@ -69,4 +67,12 @@ def get_args(stdin):
 
     # Parse args
     args = parser.parse_args()
+
+    # Process args
+    if args.slowfastfusion:
+        args.alpha = min(args.alphas_fused)
+        args.S_enc = max(args.S_enc_fused)
+        args.S_ant = max(args.S_ant_fused)
+
+    print('Input Args:', json.dumps(vars(args), indent=4))
     return args
