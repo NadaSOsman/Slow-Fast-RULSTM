@@ -4,190 +4,71 @@ from torch.nn.init import normal, constant
 import numpy as np
 from torch.nn import functional as F
 
-class OpenLSTM(nn.Module):
-    """"An LSTM implementation that returns the intermediate hidden and cell states.
-    The original implementation of PyTorch only returns the last cell vector.
-    For RULSTM, we want all cell vectors computed at intermediate steps"""
-    def __init__(self, feat_in, feat_out, num_layers=1, dropout=0):
-        """
-            feat_in: input feature size
-            feat_out: output feature size
-            num_layers: number of layers
-            dropout: dropout probability
-        """
-        super(OpenLSTM, self).__init__()
+import pytorch_lightning as pl
 
-        # simply create an LSTM with the given parameters
+class OpenLSTM(nn.Module):
+    def __init__(self, feat_in, feat_out, num_layers=1, dropout=0):
+        super(OpenLSTM, self).__init__()
         self.lstm = nn.LSTM(feat_in, feat_out, num_layers=num_layers, dropout=dropout)
 
     def forward(self, seq):
-        # manually iterate over each input to save the individual cell vectors
-        last_cell=None
-        last_hid=None
+        last_cell = None
+        last_hid = None
         hid = []
         cell = []
         for i in range(seq.shape[0]):
-            el = seq[i,...].unsqueeze(0)
+            el = seq[i, ...].unsqueeze(0)
             if last_cell is not None:
-                _, (last_hid, last_cell) = self.lstm(el, (last_hid,last_cell))
+                _, (last_hid, last_cell) = self.lstm(el, (last_hid, last_cell))
             else:
                 _, (last_hid, last_cell) = self.lstm(el)
             hid.append(last_hid)
             cell.append(last_cell)
-
         return torch.stack(hid, 0),  torch.stack(cell, 0)
 
-class RULSTM(nn.Module):
-    def __init__(self, num_class, feat_in, hidden, dropout=0.8, depth=1, 
-            sequence_completion=False, return_context=False):
-        """
-            num_class: number of classes
-            feat_in: number of input features
-            hidden: number of hidden units
-            dropout: dropout probability
-            depth: number of LSTM layers
-            sequence_completion: if the network should be arranged for sequence completion pre-training
-            return_context: whether to return the Rolling LSTM hidden and cell state (useful for MATT) during forward
-        """
-        super(RULSTM, self).__init__()
+class RULSTM(pl.LightningModule):
+    def __init__(self, num_class, feat_in, hidden, dropout=0.8, depth=1, sequence_completion=False, 
+                 return_context=False):
+        super().__init__()
         self.feat_in = feat_in
-        self.dropout = nn.Dropout(dropout)
-        self.hidden=hidden
-        self.rolling_lstm = OpenLSTM(feat_in, hidden, num_layers=depth, dropout=dropout if depth>1 else 0)
-        self.unrolling_lstm = nn.LSTM(feat_in, hidden, num_layers=depth, dropout=dropout if depth>1 else 0)
-        """self.fast_unrolling_lstm = nn.LSTM(feat_in+hidden, hidden, num_layers=depth, dropout=dropout if depth>1 else 0)"""
-        self.classifier = nn.Sequential(nn.Dropout(dropout), nn.Linear(hidden, num_class))
+        self.h_dim = hidden
         self.sequence_completion = sequence_completion
         self.return_context = return_context
 
-        self.fast_slow_fusion = nn.Sequential(nn.Dropout(dropout), nn.Linear(2*hidden,hidden), nn.ReLU())
-
-        """#attention to wait past predictions(28 for 0.125 alpha for trial)
-        in_size = 2*28*hidden
-        self.MATT = nn.Sequential(nn.Linear(in_size,int(in_size/4)),
-                                        nn.ReLU(),
-                                        nn.Dropout(dropout),
-                                        nn.Linear(int(in_size/4), int(in_size/8)),
-                                        nn.ReLU(),
-                                        nn.Dropout(dropout),
-                                        nn.Linear(int(in_size/8), 28))"""
+        self.dropout = nn.Dropout(dropout)
+        self.rolling_lstm = OpenLSTM(feat_in, hidden, num_layers=depth, dropout=dropout if depth>1 else 0)
+        self.unrolling_lstm = nn.LSTM(feat_in, hidden, num_layers=depth, dropout=dropout if depth>1 else 0)
+        self.classifier = nn.Sequential(
+            nn.Dropout(dropout), 
+            nn.Linear(hidden, num_class)
+        )
 
     def forward(self, inputs):
-        # permute the inputs for compatibility with the LSTM
-        step = 4 #the step to generate the slow rate
-        #print(inputs.shape, "2222")
-        inputs=inputs.permute(1,0,2)
-        """inputs_slow = inputs[np.arange(step-1,inputs.shape[0],step)]"""
+        B, T, _ = inputs.shape
 
-        """inputs_slow = torch.zeros([int(inputs.shape[0]/step), inputs.shape[1], inputs.shape[2]])
-        inputs_slow[-2] = inputs[-8]
-        counter = 1
-        for j in range(-3,-inputs_slow.shape[0]-1, -1):
-            inputs_slow[j] = inputs[-8-(counter*step)]
-            #print(j,  -8-(counter*step))
-            counter += 1
-        counter = 1
-        for j in range(-1,0):
-            inputs_slow[j] = inputs[-8+(counter*step)]
-            #print(j,  -8+(counter*step), "****")
-            counter += 1
-        inputs_slow = inputs_slow.to(inputs.device)"""
-
-
-        # pass the frames through the rolling LSTM
-        # and get the hidden (x) and cell (c) states at each time-step
+        inputs = inputs.permute(1, 0, 2) # [T, B, feat_in]
         x, c = self.rolling_lstm(self.dropout(inputs))
-        x = x.contiguous() # batchsize x timesteps x hidden
-        c = c.contiguous() # batchsize x timesteps x hidden
-
-        #hidden state attention
-        #in_state = torch.cat([x, c],2)
-        #a = F.softmax(self.MATT(in_state),1)
-        #print(a.shape)
-
-        """x_slow, c_slow = self.rolling_lstm(self.dropout(inputs_slow))
-        x_slow = x_slow.contiguous() # batchsize x timesteps x hidden
-        c_slow = c_slow.contiguous() # batchsize x timesteps x hidden"""
-
-        # accumulate the predictions in a list
+        x = x.contiguous() # [B, T, h_dim]
+        c = c.contiguous() # [B, T, h_dim]
         predictions = [] # accumulate the predictions in a list
-        #predictions_slow = []
-
-        # for each time-step
-        for t in range(x.shape[0]):
-            """if(t%step == 0):
-                # get the hidden and cell states at current time-step
-                hid_slow = x_slow[int(t/step),...]
-                cel_slow = c_slow[int(t/step),...]
-
-                if self.sequence_completion:
-                    # take current + future inputs (looks into the future)
-                    ins_slow = inputs_slow[int(t/step):,...]
-                else:
-                    # replicate the current input for the correct number of times (time-steps remaining to the beginning of the action)
-                    ins_slow = inputs_slow[int(t/step),...].unsqueeze(0).expand(inputs_slow.shape[0]-(int(t/step))+1,
-                               inputs_slow.shape[1],inputs_slow.shape[2]).to(inputs_slow.device)
-
-                # initialize the LSTM and iterate over the inputs
-                h_t_slow, (_,_) = self.unrolling_lstm(self.dropout(ins_slow), (hid_slow.contiguous(), cel_slow.contiguous()))
-                # get last hidden state
-                h_n_slow = h_t_slow[-1,...]
-
-                #predictions_slow.append(h_n_slow)"""
-
-
-            # get the hidden and cell states at current time-step
-            hid = x[t,...]
-            cel = c[t,...]
-
+        for t in range(T):
+            hid = x[t, ...]
+            cel = c[t, ...]
             if self.sequence_completion:
-                # take current + future inputs (looks into the future)
-                ins = inputs[t:,...]
+                ins = inputs[t:, ...]
             else:
-                # replicate the current input for the correct number of times (time-steps remaining to the beginning of the action)
-                ins = inputs[t,...].unsqueeze(0).expand(inputs.shape[0]-t+1,inputs.shape[1],inputs.shape[2]).to(inputs.device)
-
-            #new_ins = torch.empty((ins.shape[0], ins.shape[1], self.feat_in+self.hidden)).to(inputs.device)
-            """for i in range(ins.shape[0]):
-                if(i%step == 0):
-                    ins[i] = h_t_slow[int(i/step)].clone()"""
-
-            # initialize the LSTM and iterate over the inputs
+                ins = inputs[t, ...].unsqueeze(0).expand(T - t + 1, B, self.feat_in)
             h_t, (_,_) = self.unrolling_lstm(self.dropout(ins), (hid.contiguous(), cel.contiguous()))
-            # get last hidden state
-            h_n = h_t[-1,...]
+            h_n = h_t[-1, ...]
+            predictions += [h_n]
 
-            # append the last hidden state to the list
-            """if(t%step == 0):
-                #fused_prediction = self.fast_slow_fusion(torch.cat((h_n, h_n_slow),1))
-                predictions.append(torch.cat((h_n, h_n_slow),1))#fused_prediction)
-            #else:"""
-            predictions.append(h_n)
-
-
-        # obtain the final prediction tensor by concatenating along dimension 1
-        x = torch.stack(predictions,1)
-        #x_slow = torch.stack(predictions_slow,1)
-
-        # apply the classifier to each output feature vector (independently)
-        y = self.classifier(x.view(-1,x.size(2))).view(x.size(0), x.size(1), -1)
-        #y_slow = self.classifier(x_slow.view(-1,x_slow.size(2))).view(x_slow.size(0), x_slow.size(1), -1)
-
-        #attention
-        #for i in range(y.shape[1]):
-            
-
-        """for i in range(y.shape[1]):
-            if(i%step == 0):
-                y[:,i] = (0.5*y[:,i].clone()).add(y_slow[:,int(i/step)].clone()*0.5)"""
-        #for i in range(y_slow.shape[1]):
-        #    y_slow[:, i] = (0.5*y[:,i*step].clone()).add(y_slow[:,i].clone()*0.5)
+        x = torch.stack(predictions, 1) # [B, T, h_dim]
+        logits = self.classifier(x.view(-1, self.h_dim)).view(B, T, -1)
         if self.return_context:
-            # return y and the concatenation of hidden and cell states 
-            c=c.squeeze().permute(1,0,2)
-            return y, torch.cat([x, c],2)
+            c = c.squeeze().permute(1, 0, 2) # [T, B, D]
+            return logits, torch.cat([x, c], 2)
         else:
-            return y
+            return logits
 
 class RULSTMFusion(nn.Module):
     def __init__(self, branches, hidden, dropout=0.8, slow_fast_fusion_size=1, return_context=False):
