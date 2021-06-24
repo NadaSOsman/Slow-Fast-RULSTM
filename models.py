@@ -442,9 +442,9 @@ class RULSTMSlowFastFusion(nn.Module):
             #    with torch.no_grad(): 
             #        s, c = self.branches[i](inputs[i])
             #else:
-            with torch.no_grad():
+            #with torch.no_grad():
                 #print(inputs[i][0].shape)
-                s, c = self.branches[i](inputs[i])
+            s, c = self.branches[i](inputs[i])
             #print(self.alphas[i], s.shape, c.shape)
             #for s,c in zip(s_all, c_all):
                 #print(s.shape, c.shape)
