@@ -433,11 +433,11 @@ def get_scores(model, loader, challenge=False, include_discarded = False):
 def trainval(model, loaders, optimizer, epochs, start_epoch, start_best_perf):
     """Training/Validation code"""
     best_perf = start_best_perf  # to keep track of the best performing epoch
-    scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 90)
+    #scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 90)
     #scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=0.9)
     #scheduler2 = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5, factor=0.99)
-    scheduler_steplr = StepLR(optimizer, step_size=10, gamma=0.5)
-    scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=10, after_scheduler=scheduler_cosine)
+    #scheduler_steplr = StepLR(optimizer, step_size=10, gamma=0.5)
+    #scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=10, after_scheduler=scheduler_cosine)
     optimizer.zero_grad()
     optimizer.step()
     for epoch in range(start_epoch, epochs):
@@ -546,8 +546,8 @@ def trainval(model, loaders, optimizer, epochs, start_epoch, start_best_perf):
 
                 #if mode == 'validation' and epoch%10 == 0:
                 #    scheduler.step() #(accuracy_meter[mode])
-                if mode == 'validation':
-                    scheduler_warmup.step(epoch)
+                #if mode == 'validation':
+                #    scheduler_warmup.step(epoch)
                 #    scheduler2.step(accuracy_meter[mode].value())
                     #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 100)
                 # log at the end of each epoch
