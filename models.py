@@ -384,19 +384,25 @@ class RULSTMSlowFastFusion(nn.Module):
         self.branches = nn.ModuleList(branches)
         self.alphas = alphas
         self.return_context = return_context
+        self.dropout = nn.Dropout(dropout)
 
         # input size for the MATT network
         # given by 2 (hidden and cell state) * num_branches * hidden_size
-        in_size = 2*len(self.branches)*hidden
+        """in_size = 2*len(self.branches)*hidden"""
         
-        # MATT network: an MLP with 3 layers
+
+        self.rolling_lstm = OpenLSTM(hidden*2, hidden, num_layers=1, dropout=0)
+        self.unrolling_lstm = nn.LSTM(hidden*2, hidden, num_layers=1, dropout=0)
+        self.classifier = nn.Sequential(nn.Dropout(dropout), nn.Linear(hidden, 2513))
+        
+        """# MATT network: an MLP with 3 layers
         self.MATT = nn.Sequential(nn.Linear(in_size,int(in_size/4)),
                                         nn.ReLU(),
                                         nn.Dropout(dropout),
                                         nn.Linear(int(in_size/4), int(in_size/8)),
                                         nn.ReLU(),
                                         nn.Dropout(dropout),
-                                        nn.Linear(int(in_size/8), len(self.branches)))
+                                        nn.Linear(int(in_size/8), len(self.branches)))"""
 
 
     def forward(self, inputs):
@@ -448,7 +454,7 @@ class RULSTMSlowFastFusion(nn.Module):
             #print(self.alphas[i], s.shape, c.shape)
             #for s,c in zip(s_all, c_all):
                 #print(s.shape, c.shape)
-            if i < len(inputs)-1:
+            """if i < len(inputs)-1:
                 step = int(max(self.alphas)/self.alphas[i])
                 c_slow = torch.zeros([c.shape[0], int(c.shape[1]/step), c.shape[2]]).to(c.device)
                 s_slow = torch.zeros([s.shape[0], int(s.shape[1]/step), s.shape[2]]).to(s.device)
@@ -469,59 +475,49 @@ class RULSTMSlowFastFusion(nn.Module):
                 c = c_slow
                 #c = c[:, np.arange(step-1,c.shape[1],step)]
                 #s_slow = s[:, np.arange(step-1,s.shape[1],step)]
-            else:
-                s_slow = s[:, 3:].contiguous()
+            else:"""
+            if(self.alphas[i] == 0.5):
+                #s_slow = s[:, 3:].contiguous()
                 c = c[:, 3:].contiguous()
 
-            #print(inputs[i].shape, c.shape, s_slow.shape)
-            #print(s.shape, c.shape)
             scores.append(s)
-            #if(len(scores) == 1 or len(scores) == 4):
-            contexts.append(c)
-            slow_scores.append(s_slow)
-            #contexts.append(c)
-            #print(c.shape, s_slow.shape)
-        #print(len(contexts), contexts[0].shape)
-        context = torch.cat(contexts, 2)
-        #print(context.shape)
+            contexts.append(c[:, :, :1024])
+            """slow_scores.append(s_slow)"""
+
+        """context = torch.cat(contexts, 2)
         context = context.view(-1, context.shape[-1])
-
-        # Apply the MATT network to the context vectors
-        # and normalize the outputs using softmax
-        #attention = self.MATT(context)
-        #print(self.MATT[:-1](context).shape)
-        #with torch.no_grad():
         a = F.softmax(self.MATT(context),1)
-        #print(a.shape, "before return")
-
-        # array to contain the fused scores
         sc = torch.zeros_like(slow_scores[0])
-
-        # fuse all scores multiplying by the weights
         for i in range(len(slow_scores)):
-            #print(slow_scores[i].shape, a[:,i].shape, slow_scores[i].shape[-1])
             s = (slow_scores[i].view(-1,slow_scores[i].shape[-1])*a[:,i].unsqueeze(1)).view(sc.shape)
-            #print(s.shape)
-            sc += s
-        """sc = slow_scores[0].clone()
-        for i in range(sc.shape[0]):
-            corr = np.corrcoef(inputs[0][i].cpu().numpy())
-            avrg_corr = np.mean(np.tril(abs(corr), -1))
-            if(avrg_corr >= 0.35):
-                sc[i] = slow_scores[1][i].clone()"""
-        """for i in range(scores[0].shape[1]):
-            if i%max_step == 0:
-                scores[0][:,i] = sc[:,int((i+1)/max_step)-1]"""
+            sc += s"""
+
+        context = torch.empty([contexts[0].shape[0], contexts[0].shape[1], 2*contexts[0].shape[2]])
+        for i in range(context.shape[1]):
+             context[:,i] = torch.cat([contexts[0][:, i], contexts[1][:, int(i/4)]], -1)
+
+        context = context.to(contexts[0].device)
+        context = context.permute(1,0,2)
+        x, c = self.rolling_lstm(self.dropout(context))
+        x = x.contiguous()
+        c = c.contiguous()
+        predictions = []
+        for t in range(x.shape[0]):
+            hid = x[t,...]
+            cel = c[t,...]
+            ins = context[t,...].unsqueeze(0).expand(context.shape[0]-t+1,context.shape[1],context.shape[2]).to(context.device)
+            h_t, (_,_) = self.unrolling_lstm(self.dropout(ins), (hid.contiguous(), cel.contiguous()))
+            h_n = h_t[-1,...]
+            predictions.append(h_n)
+        x = torch.stack(predictions,1)
+        sc = self.classifier(x.view(-1,x.size(2))).view(x.size(0), x.size(1), -1)
 
         if(self.return_context):
             c = torch.zeros_like(contexts[0])
             for i in range(len(inputs)):
                 c += (contexts[i].view(-1,contexts[i].shape[-1])*a[:,i].unsqueeze(1)).view(c.shape)
-            #c = attention.view([contexts[0].shape[0], contexts[0].shape[1], 2])
-            #c = context = torch.cat(contexts, 2)
             return sc, c
         else:
-            # return the fused scores
             return sc
 
 
@@ -538,8 +534,14 @@ class SingleBranchRULSTMSlowFastFusion(nn.Module):
         self.branches = nn.ModuleList(branches)
         self.alphas = alphas
         self.return_context = return_context
+        self.dropout = nn.Dropout(dropout)
 
-        # input size for the MATT network
+        self.rolling_lstm = OpenLSTM(hidden*2, hidden, num_layers=1, dropout=0)
+        self.unrolling_lstm = nn.LSTM(hidden*2, hidden, num_layers=1, dropout=0)
+        self.classifier = nn.Sequential(nn.Dropout(dropout), nn.Linear(hidden, 2513))
+
+
+        """# input size for the MATT network
         # given by 2 (hidden and cell state) * num_branches * hidden_size
         in_size = 2*len(self.branches)*hidden
         
@@ -550,7 +552,7 @@ class SingleBranchRULSTMSlowFastFusion(nn.Module):
                                         nn.Linear(int(in_size/4), int(in_size/8)),
                                         nn.ReLU(),
                                         nn.Dropout(dropout),
-                                        nn.Linear(int(in_size/8), len(self.branches)))
+                                        nn.Linear(int(in_size/8), len(self.branches)))"""
 
 
     def forward(self, inputs):
@@ -584,13 +586,13 @@ class SingleBranchRULSTMSlowFastFusion(nn.Module):
             #    with torch.no_grad(): 
             #        s, c = self.branches[i](inputs[i])
             #else:
-            #with torch.no_grad():
+            with torch.no_grad():
                 #print(inputs[i][0].shape)
-            s, c = self.branches[i](inputs[i])
+                s, c = self.branches[i](inputs[i])
             #print(self.alphas[i], s.shape, c.shape)
             #for s,c in zip(s_all, c_all):
                 #print(s.shape, c.shape)
-            if i < len(inputs)-1:
+            """if i < len(inputs)-1:
                 step = int(max(self.alphas)/self.alphas[i])
                 c_slow = torch.zeros([c.shape[0], int(c.shape[1]/step), c.shape[2]]).to(c.device)
                 s_slow = torch.zeros([s.shape[0], int(s.shape[1]/step), s.shape[2]]).to(s.device)
@@ -611,20 +613,21 @@ class SingleBranchRULSTMSlowFastFusion(nn.Module):
                 c = c_slow
                 #c = c[:, np.arange(step-1,c.shape[1],step)]
                 #s_slow = s[:, np.arange(step-1,s.shape[1],step)]
-            else:
-                s_slow = s[:, 3:].contiguous()
+            else:"""
+            if(self.alphas[i] == 0.5):
+                #s_slow = s[:, 3:].contiguous()
                 c = c[:, 3:].contiguous()
 
             #print(inputs[i].shape, c.shape, s_slow.shape)
             #print(s.shape, c.shape)
-            scores.append(s)
+            """scores.append(s)"""
             #if(len(scores) == 1 or len(scores) == 4):
-            contexts.append(c)
-            slow_scores.append(s_slow)
+            contexts.append(c[:, :, :1024].contiguous())
+            """slow_scores.append(s_slow)"""
             #contexts.append(c)
             #print(c.shape, s_slow.shape)
         #print(len(contexts), contexts[0].shape)
-        context = torch.cat(contexts, 2)
+        """context = torch.cat(contexts, 2)
         #print(context.shape)
         context = context.view(-1, context.shape[-1])
 
@@ -644,7 +647,8 @@ class SingleBranchRULSTMSlowFastFusion(nn.Module):
             #print(slow_scores[i].shape, a[:,i].shape, slow_scores[i].shape[-1])
             s = (slow_scores[i].view(-1,slow_scores[i].shape[-1])*a[:,i].unsqueeze(1)).view(sc.shape)
             #print(s.shape)
-            sc += s
+            sc += s"""
+       #---------------------------------------------------------------
         """sc = slow_scores[0].clone()
         for i in range(sc.shape[0]):
             corr = np.corrcoef(inputs[0][i].cpu().numpy())
@@ -654,6 +658,27 @@ class SingleBranchRULSTMSlowFastFusion(nn.Module):
         """for i in range(scores[0].shape[1]):
             if i%max_step == 0:
                 scores[0][:,i] = sc[:,int((i+1)/max_step)-1]"""
+
+        context = torch.empty([contexts[0].shape[0], contexts[0].shape[1], 2*contexts[0].shape[2]])
+        for i in range(context.shape[1]):
+             context[:,i] = torch.cat([contexts[0][:, i], contexts[1][:, int(i/4)]], -1)
+
+        context = context.to(contexts[0].device)
+        context = context.permute(1,0,2)
+        x, c = self.rolling_lstm(self.dropout(context))
+        x = x.contiguous()
+        c = c.contiguous()
+        predictions = []
+        for t in range(x.shape[0]):
+            hid = x[t,...]
+            cel = c[t,...]
+            ins = context[t,...].unsqueeze(0).expand(context.shape[0]-t+1,context.shape[1],context.shape[2]).to(context.device)
+            h_t, (_,_) = self.unrolling_lstm(self.dropout(ins), (hid.contiguous(), cel.contiguous()))
+            h_n = h_t[-1,...]
+            predictions.append(h_n)
+        x = torch.stack(predictions,1)
+        sc = self.classifier(x.view(-1,x.size(2))).view(x.size(0), x.size(1), -1)
+
 
         if(self.return_context):
             c = torch.zeros_like(contexts[0])
