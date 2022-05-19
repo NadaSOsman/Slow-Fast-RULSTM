@@ -83,8 +83,8 @@ python main.py train data/ek55 models/ek55 --modality rgb --task anticipation
   ```
   python main.py train data_path models/ek55 --modality rgb --task anticipation --slowfastfusion --alphas_fused 0.125 0.5 --S_enc_fused 24 6 --S_ant_fused 16 4
   ```
-  ..2. Repeat for all modalities.
-  ..3. Run Modalities fusion with Arch1:
+  2. Repeat for all modalities.
+  3. Run Modalities fusion with Arch1:
   ```
   python main.py train data_path models/ek55 --modality fusion --task anticipation --slowfastfusion --arc1 --alphas_fused 0.125 0.5 --S_enc_fused 24 6 --S_ant_fused 16 4 --dropout 0.9
   ```
