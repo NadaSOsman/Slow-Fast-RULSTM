@@ -112,6 +112,7 @@ class RULSTM(nn.Module):
         else:
             return y
 
+#Model for modalities fusion for a single alpha (slow/fast)
 class RULSTMFusion(nn.Module):
     def __init__(self, branches, hidden, dropout=0.8, return_context=False):
         """
@@ -175,6 +176,7 @@ class RULSTMFusion(nn.Module):
             # return the fused scores
             return sc
 
+#Model for modalities fusion for slow-fast RULSTM branches (arc1)
 class AllBranchesRULSTMFusion(nn.Module):
     def __init__(self, branches, hidden, dropout=0.8, return_context=False):
         """
@@ -235,7 +237,7 @@ class AllBranchesRULSTMFusion(nn.Module):
             # return the fused scores
             return sc
 
-
+#Slow-Fast fusion for fused modalities RULSTM (arc2)
 class RULSTMSlowFastFusion(nn.Module):
     def __init__(self, branches, hidden, dropout=0.8, alphas=[0.125, 0.5], return_context=False):
         """
@@ -347,7 +349,7 @@ class RULSTMSlowFastFusion(nn.Module):
             return sc
 
 
-
+#Slow-Fast fusion for a single modality
 class SingleBranchRULSTMSlowFastFusion(nn.Module):
     def __init__(self, branches, hidden, dropout=0.8, alphas=[0.125, 0.5], return_context=False):
         """
