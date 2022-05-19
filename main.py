@@ -140,7 +140,6 @@ def get_loader(mode, override_modality = None, split_point=1.0):
             if args.modality != 'fusion':
                 path_to_lmdb = [join(args.path_to_data, args.modality) for m in range(len(args.alphas_fused))]
             else:
-                #path_to_lmdb = [join(args.path_to_data, m) for m in ['rgb', 'flow', 'obj', 'rgb', 'flow', 'obj']]
                 if args.arc1:
                     path_to_lmdb = [[join(args.path_to_data, n) for m in range(len(args.alphas_fused))] for n in ['rgb', 'flow', 'obj']]
                 else:
@@ -198,41 +197,11 @@ def get_model():
             models_rgb = []
             models_flow = []
             models_obj = []
-            #models = []
             
             for i in range(len(args.alphas_fused)):
                 models_rgb.append(RULSTM(args.num_class, args.feats_in[0], args.hidden, args.dropout, return_context = args.task=='anticipation'))
                 models_flow.append(RULSTM(args.num_class, args.feats_in[1], args.hidden, args.dropout, return_context = args.task=='anticipation'))
                 models_obj.append(RULSTM(args.num_class, args.feats_in[2], args.hidden, args.dropout, return_context = args.task=='anticipation'))
-                #models.append(RULSTM(args.num_class, args.feats_in[0], args.hidden, args.dropout, return_context = args.task=='anticipation'))
-                #models.append(RULSTM(args.num_class, args.feats_in[1], args.hidden, args.dropout, return_context = args.task=='anticipation'))
-                #models.append(RULSTM(args.num_class, args.feats_in[2], args.hidden, args.dropout, return_context = args.task=='anticipation'))
-
-            """if args.mode == 'train' and not args.ignore_checkpoints:
-                checkpoints_rgb = []
-                checkpoints_flow = []
-                checkpoints_obj = []
-                #checkpoints = []
-
-                for i in range(len(args.alphas_fused)):
-                    single_exp_name_rgb = f"RULSTM-{args.task}_{args.alphas_fused[i]}_{args.S_enc_fused[i]}_{args.S_ant_fused[i]}_rgb"
-                    single_exp_name_flow = f"RULSTM-{args.task}_{args.alphas_fused[i]}_{args.S_enc_fused[i]}_{args.S_ant_fused[i]}_flow"
-                    single_exp_name_obj = f"RULSTM-{args.task}_{args.alphas_fused[i]}_{args.S_enc_fused[i]}_{args.S_ant_fused[i]}_obj"
-
-                    checkpoints_rgb.append(torch.load(join(args.path_to_models+f"_{args.alphas_fused[i]}", single_exp_name_rgb+'_best.pth.tar'))['state_dict'])
-                    checkpoints_flow.append(torch.load(join(args.path_to_models+f"_{args.alphas_fused[i]}", single_exp_name_flow+'_best.pth.tar'))['state_dict'])
-                    checkpoints_obj.append(torch.load(join(args.path_to_models+f"_{args.alphas_fused[i]}", single_exp_name_obj+'_best.pth.tar'))['state_dict'])
-                    #checkpoints.append(torch.load(join(args.path_to_models+f"_{args.alphas_fused[i]}", single_exp_name_rgb+'_best.pth.tar'))['state_dict'])
-                    #checkpoints.append(torch.load(join(args.path_to_models+f"_{args.alphas_fused[i]}", single_exp_name_flow+'_best.pth.tar'))['state_dict'])
-                    #checkpoints.append(torch.load(join(args.path_to_models+f"_{args.alphas_fused[i]}", single_exp_name_obj+'_best.pth.tar'))['state_dict'])
-
-              
-                    models_rgb[i].load_state_dict(checkpoints_rgb[i])
-                    models_flow[i].load_state_dict(checkpoints_flow[i])
-                    models_obj[i].load_state_dict(checkpoints_obj[i])
-                    #models[i*3].load_state_dict(checkpoints[i*3])
-                    #models[i*3+1].load_state_dict(checkpoints[i*3+1])
-                    #models[i*3+2].load_state_dict(checkpoints[i*3+2])"""
 
             if args.arc1:
                 rgb_model = SingleBranchRULSTMSlowFastFusion(models_rgb, args.hidden, args.dropout, args.alphas_fused, True)
@@ -252,7 +221,6 @@ def get_model():
                      obj_model.load_state_dict(checkpoint_obj)
 
                 model = AllBranchesRULSTMFusion([rgb_model, flow_model, obj_model], args.hidden, args.dropout, len(args.alphas_fused))
-                #model = RULSTMFusion(models, args.hidden, args.dropout, len(args.alphas_fused))
             else:
                 fast_model = RULSTMFusion([models_rgb[0], models_flow[0], models_obj[0]], args.hidden, args.dropout, return_context=True)
                 slow_model = RULSTMFusion([models_rgb[1], models_flow[1], models_obj[1]], args.hidden, args.dropout, return_context=True)
@@ -372,11 +340,6 @@ def get_scores(model, loader, challenge=False, include_discarded = False):
             y = batch['label'].numpy()
 
             ids.append(batch['id'])
-             
-            """#for the average and concatenation part only (0.125 - 0.5)
-            args.S_ant = 4
-            args.S_enc = 3
-            args.alpha =  0.5"""
 
             if args.slowfastfusion:
                 args.S_ant = min(args.S_ant_fused)
@@ -384,15 +347,6 @@ def get_scores(model, loader, challenge=False, include_discarded = False):
                 args.alpha = max(args.alphas_fused)
 
             preds = model(x).cpu().numpy()[:, -args.S_ant:, :]
-            #print( model(x).cpu().numpy()[0, :, 0], preds[0, :, 0])
-
-            """if(models != 0):
-                for i in range(preds.shape[0]):
-                    corr = np.corrcoef(x[i].cpu().numpy())
-                    avrg_corr = np.mean(np.tril(abs(corr), -1))
-                    if(models == 1 and avrg_corr >= 0.35 or models == 2 and avrg_corr >= 0.29):
-                        preds[i] = np.zeros(preds[i].shape)
-                        #print(preds[i])"""
 
             predictions.append(preds)
             labels.append(y)
@@ -433,11 +387,6 @@ def get_scores(model, loader, challenge=False, include_discarded = False):
 def trainval(model, loaders, optimizer, epochs, start_epoch, start_best_perf):
     """Training/Validation code"""
     best_perf = start_best_perf  # to keep track of the best performing epoch
-    #scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 90)
-    #scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=0.9)
-    #scheduler2 = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5, factor=0.99)
-    #scheduler_steplr = StepLR(optimizer, step_size=10, gamma=0.5)
-    #scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=10, after_scheduler=scheduler_cosine)
     optimizer.zero_grad()
     optimizer.step()
     for epoch in range(start_epoch, epochs):
@@ -454,14 +403,9 @@ def trainval(model, loaders, optimizer, epochs, start_epoch, start_best_perf):
                     model.train()
                 else:
                     model.eval()
-
-                #import random as rn
-                #b = rn.randint(0,len(loaders[mode]))
+		
                 counter = 0
                 for i, batch in enumerate(loaders[mode]):
-                    #print(i, b, len(loaders[mode]))
-                    #if(i!=stop and mode == 'training'):
-                    #    continue
                     x = batch['past_features' if args.task ==
                               'anticipation' else 'action_features']
 
@@ -478,23 +422,13 @@ def trainval(model, loaders, optimizer, epochs, start_epoch, start_best_perf):
                     bs = y.shape[0]  # batch size
                     #print(x[0][0].device, "just before predict")
                     preds = model(x)
-                    
-                    """#for the average and concatenation part only (0.125 - 0.5)
-                    args.S_ant = 4
-                    args.S_enc = 3
-                    args.alpha = 0.5"""
  
                     if(args.slowfastfusion):
-                        #max_step = int(max(args.alphas_fused)/min(args.alphas_fused))
-                        #print(preds.shape, max_step)
-                        #preds = preds[:, np.arange(max_step-1, preds.shape[1], max_step)]
                         args.S_ant = min(args.S_ant_fused)
                         args.S_enc = min(args.S_enc_fused)
                         args.alpha = max(args.alphas_fused)
-                        #print(preds.shape)
 
                     # take only last S_ant predictions
-                    #print(preds[0, :, 0], preds[0, -args.S_ant:, 0])
                     preds = preds[:, -args.S_ant:, :].contiguous()
 
                     # linearize predictions
@@ -526,30 +460,17 @@ def trainval(model, loaders, optimizer, epochs, start_epoch, start_best_perf):
                     if mode == 'training':
                         optimizer.zero_grad()
                         loss.backward()
-                        #scheduler.step()
                         optimizer.step()
-                        #print(scheduler.get_lr())
 
                     # compute decimal epoch for logging
                     e = epoch + i/len(loaders[mode])
 
                     # log training during loop
                     # avoid logging the very first batch. It can be biased.
-                    #if mode == 'training' and i != 0 and i % args.display_every == 0:
                     if i != 0 and i % args.display_every == 0:
                         log(mode, e, loss_meter[mode], accuracy_meter[mode])
                         counter += 1
-                    #print(epoch, i)
-                    #if mode == 'training': #and counter == stop:
-                        #print(i)
-                    #    break
-
-                #if mode == 'validation' and epoch%10 == 0:
-                #    scheduler.step() #(accuracy_meter[mode])
-                #if mode == 'validation':
-                #    scheduler_warmup.step(epoch)
-                #    scheduler2.step(accuracy_meter[mode].value())
-                    #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 100)
+			
                 # log at the end of each epoch
                 log(mode, epoch+1, loss_meter[mode], accuracy_meter[mode],
                     max(accuracy_meter[mode].value(), best_perf) if mode == 'validation'
@@ -640,7 +561,7 @@ def main():
             verb_scores, noun_scores, action_scores, verb_labels, noun_labels, action_labels, ids = get_scores(model, loader, include_discarded=args.ek100)
 
             if args.ensamble:
-                #Second model
+                #Second model to ensamble
                 args.slowfastfusion = False
                 args.S_ant = 4
                 args.S_enc = 6
@@ -648,6 +569,7 @@ def main():
                 model2 = RULSTM(args.num_class, args.feat_in, args.hidden,
                            args.dropout, sequence_completion=args.sequence_completion)
                 model2.to(device)
+		#change model if necessary
                 chk = torch.load('models/ek55_0.5/RULSTM-anticipation_0.5_6_4_rgb_best.pth.tar')
                 epoch2 = chk['epoch']
                 best_perf2 = chk['best_perf']
@@ -658,13 +580,14 @@ def main():
                 loader2 = get_loader('validation', split_point=1.0)
                 verb_scores2, noun_scores2, action_scores2, verb_labels2, noun_labels2, action_labels2, ids2 = get_scores(model2, loader2, include_discarded=args.ek100)
 
-                #third model
+                #third model to ensamble
                 args.S_ant = 16
                 args.S_enc = 12
                 args.alpha = 0.125
                 model1 = RULSTM(args.num_class, args.feat_in, args.hidden,
                            args.dropout, sequence_completion=args.sequence_completion)
                 model1.to(device)
+		#change model if necessary
                 chk = torch.load('models/ek55_0.125/RULSTM-anticipation_0.125_12_16_rgb_best.pth.tar')
                 epoch1 = chk['epoch']
                 best_perf1 = chk['best_perf']
@@ -679,19 +602,6 @@ def main():
                 args.S_ant = 4
                 args.S_enc = 6
                 args.alpha = 0.5
-
-
-                #print(ids.shape)
-                #alighnment and average
-                #print(verb_scores1.shape, noun_scores1.shape, action_scores1.shape, verb_labels1.shape, noun_labels1.shape, action_labels1.shape, ids1.shape)
-                #print(verb_scores2.shape, noun_scores2.shape, action_scores2.shape, verb_labels2.shape, noun_labels2.shape, action_labels2.shape, ids2.shape)
-                """verb_scores = np.zeros([verb_scores0.shape[0], verb_scores1.shape[1], verb_scores1.shape[2]])
-                noun_scores = np.zeros([noun_scores2.shape[0], noun_scores1.shape[1], noun_scores1.shape[2]])
-                action_scores = np.zeros([action_scores2.shape[0], action_scores1.shape[1], action_scores1.shape[2]])
-                verb_labels = np.zeros(verb_labels0.shape)
-                noun_labels = np.zeros(noun_labels0.shape)
-                action_labels = np.zeros(action_labels0.shape)
-                ids = np.zeros(ids0.shape)"""
                 counter1 = 0
                 counter2 = 0
                 for i in range(ids.shape[0]):
@@ -708,11 +618,8 @@ def main():
                         noun_scores[i] = np.add(0.55*noun_scores2[idx], 0.45*noun_scores[i]) #, axis=0)
                         counter2 += 1
                 print(counter1, counter2, counter1+counter2)
-            #print(verb_scores.shape, noun_scores.shape, action_scores.shape, verb_labels.shape, noun_labels.shape, action_labels.shape, ids.shape)
-
 
         if not args.ek100:
-            #print(action_scores.shape, action_labels.shape)
             verb_accuracies = topk_accuracy_multiple_timesteps(
                 verb_scores, verb_labels)
             noun_accuracies = topk_accuracy_multiple_timesteps(
@@ -749,41 +656,6 @@ def main():
                 cc = [f"{c:0.1f}%" for c in np.linspace(0,100,args.S_ant+1)[1:]]
 
             scores = pd.DataFrame(all_accuracies*100, columns=cc, index=pd.MultiIndex.from_tuples(indices))
-
-            """acts = [474, 917, 1244, 1352, 1542, 1545, 1913, 1923, 1931, 2125, 2177, 2247, 2279, 2300]
-            counter = [0 for x in range(len(acts))]
-            for i in action_labels:
-                for x in range(len(acts)):
-                    if acts[x] == i:
-                        counter[x] +=1
-            print(len(action_labels), counter)"""
-            """#per class accuracy
-            all_classes_acc = []
-            classes = []
-            classes_file = open("classes_fused_0.5_ext", 'w')
-            scores_file = open("scores_fused_0.5_ext", 'w')
-            indices_action = [
-                ('Action', 'Top-1 Accuracy'),
-                ('Action', 'Top-5 Accuracy'),
-            ]
-            counter = 0 
-            for i in range(action_scores.shape[-1]):
-                action_accuracies_per_class = topk_accuracy_multiple_timesteps(action_scores, action_labels, selected_class=i)
-                #print(action_accuracies_per_class, action_accuracies_per_class.shape)
-                #break
-                if(action_accuracies_per_class[1,-1] != 0 and i in action_labels):
-                    all_classes_acc.append(action_accuracies_per_class[1,-1])
-                    classes.append(i)
-                    classes_file.write(str(i)+"\n")
-                    scores_file.write(str(action_accuracies_per_class[1,-1])+"\n")
-                    counter += 1
-
-                scores_per_class = pd.DataFrame(action_accuracies_per_class*100, columns=cc, index=pd.MultiIndex.from_tuples(indices_action))
-                #print(action_scores.shape[-1], scores_per_class)
-            print(counter)
-            classes_file.close()
-            scores_file.close()
-            #print(all_classes_acc.sort())"""
         else:
             verb_accuracies = topk_accuracy_multiple_timesteps(
                 verb_scores, verb_labels)
