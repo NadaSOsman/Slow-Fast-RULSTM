@@ -79,27 +79,27 @@ python main.py train data/ek55 models/ek55 --modality rgb --task anticipation
 ```
 2. Repeat for all modalities (rgb/flow/obj), and all timescales. For the obj modality, set ```--feat_in 352```
 3. Slow-Fast Fusion Model Arch1:
-  * Run Slow-Fast Fusion on a single modality:
-  ```
-  python main.py train data_path models/ek55 --modality rgb --task anticipation --slowfastfusion --alphas_fused 0.125 0.5 --S_enc_fused 24 6 --S_ant_fused 16 4
-  ```
-  * Repeat for all modalities.
-  * Run Modalities fusion with Arch1:
-  ```
-  python main.py train data_path models/ek55 --modality fusion --task anticipation --slowfastfusion --arc1 --alphas_fused 0.125 0.5 --S_enc_fused 24 6 --S_ant_fused 16 4 --dropout 0.9
-  ```
+    * Run Slow-Fast Fusion on a single modality:
+    ```
+    python main.py train data_path models/ek55 --modality rgb --task anticipation --slowfastfusion --alphas_fused 0.125 0.5 --S_enc_fused 24 6 --S_ant_fused 16 4
+    ```
+    * Repeat for all modalities.
+    * Run Modalities fusion with Arch1:
+    ```
+    python main.py train data_path models/ek55 --modality fusion --task anticipation --slowfastfusion --arc1 --alphas_fused 0.125 0.5 --S_enc_fused 24 6 --S_ant_fused 16 4 --dropout 0.9
+    ```
 4. Slow-Fast Fusion Model Arch2:
-  * Run Modalities fusion with slow timescale
-  ```
-  python main.py train data_path models/ek55 --modality fusion --task anticipation --alpha 0.5 --S_enc 6 --S_ant 4
-  ```
-  * Run Modalities fusion with fast timescale
-  ```
-  python main.py train data_path models/ek55 --modality fusion --task anticipation --alpha 0.125 --S_enc 24 --S_ant 16
-  ```
-  * Run slow-fast fusion on the fused modalites
-  ```
-  python main.py train data_path models/ek55 --modality fusion --task anticipation --slowfastfusion --alphas_fused 0.125 0.5 --S_enc_fused 24 6 --S_ant_fused 16 4 --dropout 0.9
-  ```
+    * Run Modalities fusion with slow timescale
+    ```
+    python main.py train data_path models/ek55 --modality fusion --task anticipation --alpha 0.5 --S_enc 6 --S_ant 4
+    ```
+    * Run Modalities fusion with fast timescale
+    ```
+    python main.py train data_path models/ek55 --modality fusion --task anticipation --alpha 0.125 --S_enc 24 --S_ant 16
+    ```
+    * Run slow-fast fusion on the fused modalites
+    ```
+    python main.py train data_path models/ek55 --modality fusion --task anticipation --slowfastfusion --alphas_fused 0.125 0.5 --S_enc_fused 24 6 --S_ant_fused 16 4 --dropout 0.9
+    ```
 5. To validate a trained model, run ```python main.py validate``` with the same options as in the training command
 6. To test a trained model, run ```python main.py test --json_directory jsons/ek55``` with the same options as in the training command.
